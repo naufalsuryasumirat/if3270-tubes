@@ -21,23 +21,6 @@ activation_functions = {
     'softmax': softmax
 }
 
-class FFNN:
-    def __init__(self, input_layer: np.array, hidden_layers: list) -> None:
-        self.input_layer = input_layer # adding bias
-        # print(self.input_layer)
-        self.hidden_layers = hidden_layers # last layer = output layer?
-        # add batch feed forward?
-
-    def feed_forward(self):
-        output = self.input_layer # adding bias
-        for i in range(0, len(self.hidden_layers)):
-            output = self.hidden_layers[i].calculate(np.append(output, 1)) # adding bias
-            # TODO add case for output layer? or change class attributes?
-        return output
-
-    def attach_hidden_layer(self, hidden_layer):
-        self.hidden_layers.append(hidden_layer)
-
 class Layer:
     # n_neuron: number of neuron, weights: weight matrix, activation: activation function
     def __init__(self, n_neuron: int, weights: np.array, activation: str) -> None:
@@ -48,42 +31,105 @@ class Layer:
 
     def calculate(self, in_matrix: np.array) -> np.array:
         return self.act_function(np.dot(self.weights.transpose(), in_matrix))
+    
+    def get_structure(self) -> tuple((int, np.array, np.array)):
+        # n_neuron: int, weight matrix: np.array, bias weight matrix: np.array
+        n_neuron = self.n_neuron
+        weight_neuron = self.weights[:-1,]
+        weight_bias = self.weights[-1:,].flatten()
+        return (n_neuron, weight_neuron, weight_bias)
+
+class FFNN:
+    def __init__(self,  hidden_layers: list, input_layer = None) -> None:
+        self.hidden_layers = hidden_layers # last layer = output layer?
+        self.input_layer = input_layer
+
+    def feed_forward(self) -> (np.array or None):
+        if (isinstance(self.input_layer, type(None))): return None
+        if len(self.input_layer.shape) == 1: return self.forward(self.input_layer)
+        else:
+            outputs = []
+            for data in self.input_layer: outputs.append(self.forward(data))
+            return np.array(outputs).flatten()
+    
+    def forward(self, input) -> (np.array or None):
+        output = input
+        for i in range(0, len(self.hidden_layers)):
+            output = self.hidden_layers[i].calculate(np.append(output, 1))
+        return output
+
+    def attach_hidden_layer(self, hidden_layer: Layer) -> None:
+        self.hidden_layers.append(hidden_layer)
+
+    def predict(self, input_layer: np.array) -> list: # input_layer without bias
+        self.input_layer = input_layer
+        return self.feed_forward()
+
+    def get_structure(self) -> tuple((np.array, list)):
+        return (self.input_layer, [layer.get_structure() for layer in self.hidden_layers])
 
 if __name__ == "__main__":
-    weight_sigmoid1 = [
+    # XOR Dataset
+    input = np.array([
         [1, 1],
-        [1, 1],
-        [0, -1]
-    ]
+        [1, 0],
+        [0, 0],
+        [0, 1] 
+    ])
 
-    weight_sigmoid2 = [
+    # Sigmoid Model (PPT)
+    weight_sigmoid_1 = np.array([
         [20, -20],
         [20, -20],
-        [-10, 30]
-    ]
+        [-10, 30] # weight bias
+    ])
 
-    weight_sigmoid3 = [
+    weight_sigmoid_2 = np.array([
         [20],
         [20],
-        [-30]
-    ]
-
-    weight_relu = [
-        [1],
-        [-1],
-        [0]
-    ]
-
-    weight_relu2 = [
-        [1, 1],
-        [1, 1],
-        [0, -1]
-    ]   # n_column (banyak kolom): banyak neuron + 1 bias,
+        [-30] # weight bias
+    ])  # n_column (banyak kolom): banyak neuron + 1 bias,
         # n_row (banyak baris): banyak neuron sebelumnya + 1 bias
-    layer_sigmoid = Layer(2, np.array(weight_sigmoid2), 'sigmoid') #
-    layer_relu = Layer(1, np.array(weight_sigmoid3), 'sigmoid')
 
-    input = np.array([[0, 0]])
+    # Relu Model (PPT)
+    weight_relu_1 = np.array([
+        [1, 1],
+        [1, 1],
+        [0, -1] # weight bias
+    ])
 
-    ffnn = FFNN(input, [layer_sigmoid, layer_relu])
-    print(ffnn.feed_forward())
+    weight_relu_2 = np.array([ # Linear too
+        [1],
+        [-2],
+        [0] # weight bias
+    ])
+
+    # print(input[-1:,].flatten())
+    # print(input[:-1,])
+
+    # Input FFN
+    layer_sigmoid = Layer(2, weight_sigmoid_1, 'sigmoid')
+    layer_sigmoid_2 = Layer(1, weight_sigmoid_2, 'sigmoid')
+    ffnn_sig = FFNN([layer_sigmoid, layer_sigmoid_2], input)
+
+    # Model Relu
+    layer_relu_2 = Layer(2, weight_relu_1, 'relu')
+    layer_relu_3 = Layer(1, weight_relu_2, 'relu')
+    ffnn_relu = FFNN([layer_relu_2, layer_relu_3], input)
+
+    # Model Relu-Linear
+    layer_relu_4 = Layer(2, weight_relu_1, 'relu')
+    layer_linear = Layer(1, weight_relu_2, 'linear')
+    ffnn_reli = FFNN([layer_relu_4, layer_linear], input)
+
+    # Contoh get_structure untuk Layer
+    print(layer_sigmoid.get_structure())
+
+    # Contoh get_structure untuk FFNN
+    print(ffnn_sig.get_structure())
+
+    print(ffnn_sig.feed_forward())
+    print(ffnn_relu.feed_forward())
+    print(ffnn_reli.feed_forward())
+
+    print(ffnn_reli.predict(np.array([0, 1])))
