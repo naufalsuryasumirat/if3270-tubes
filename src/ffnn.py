@@ -12,7 +12,7 @@ sigmoid = np.vectorize(sigmoid)
 relu = lambda x: max(0, x)
 relu = np.vectorize(relu)
 ## Softmax
-softmax = lambda x: np.exp(x) / np.exp(x).sum() # already used for vectors
+softmax = lambda x: np.exp(x) / np.exp(x).sum(axis=0) # already used for vectors
 ## Dict
 activation_functions = {
     'linear': linear,
@@ -40,9 +40,10 @@ class Layer:
         return (n_neuron, weight_neuron, weight_bias)
 
 class FFNN:
-    def __init__(self,  hidden_layers: list, input_layer = None) -> None:
-        self.hidden_layers = hidden_layers # last layer = output layer?
+    def __init__(self,  hidden_layers: list, input_layer = None, threshold = 0.5) -> None:
+        self.hidden_layers = hidden_layers
         self.input_layer = input_layer
+        self.threshold = threshold
 
     def feed_forward(self) -> (np.array or None):
         if (isinstance(self.input_layer, type(None))): return None
@@ -56,7 +57,7 @@ class FFNN:
         output = input
         for i in range(0, len(self.hidden_layers)):
             output = self.hidden_layers[i].calculate(np.append(output, 1))
-        return output
+        return int(output > self.threshold)
 
     def attach_hidden_layer(self, hidden_layer: Layer) -> None:
         self.hidden_layers.append(hidden_layer)
@@ -104,6 +105,12 @@ if __name__ == "__main__":
         [0] # weight bias
     ])
 
+    weight_softmax = np.array([
+        [1],
+        [1],
+        [1]
+    ])
+
     # print(input[-1:,].flatten())
     # print(input[:-1,])
 
@@ -122,6 +129,11 @@ if __name__ == "__main__":
     layer_linear = Layer(1, weight_relu_2, 'linear')
     ffnn_reli = FFNN([layer_relu_4, layer_linear], input)
 
+    # Model Sigmoid-Softmax
+    layer_sigmoid_3 = Layer(2, weight_sigmoid_1, 'sigmoid')
+    layer_softmax = Layer(1, weight_softmax, 'softmax')
+    ffnn_sigmax = FFNN([layer_sigmoid_3, layer_softmax], input)
+
     # Contoh get_structure untuk Layer
     print(layer_sigmoid.get_structure())
 
@@ -131,5 +143,8 @@ if __name__ == "__main__":
     print(ffnn_sig.feed_forward())
     print(ffnn_relu.feed_forward())
     print(ffnn_reli.feed_forward())
+    print(ffnn_sigmax.feed_forward())
 
     print(ffnn_reli.predict(np.array([0, 1])))
+
+    print(softmax(np.dot(np.array([[0.75, 0.25, 0.11, 7], [0.75, 0.25, 0.11, 8]]), np.array([1, 1, 1, 1]).transpose())))
