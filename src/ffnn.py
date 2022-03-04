@@ -42,6 +42,7 @@ class Layer:
 class FFNN:
     def __init__(self,  hidden_layers: list, input_layer = None, threshold = 0.5) -> None:
         self.hidden_layers = hidden_layers
+        self.output_layer = hidden_layers[-1]
         self.input_layer = input_layer
         self.threshold = threshold
 
@@ -51,12 +52,14 @@ class FFNN:
         else:
             outputs = []
             for data in self.input_layer: outputs.append(self.forward(data))
+            if (self.output_layer.activation == 'softmax'): return outputs
             return np.array(outputs).flatten()
     
     def forward(self, input) -> (np.array or None):
         output = input
         for i in range(0, len(self.hidden_layers)):
             output = self.hidden_layers[i].calculate(np.append(output, 1))
+        if (self.output_layer.activation == 'softmax'): return output
         return int(output > self.threshold)
 
     def attach_hidden_layer(self, hidden_layer: Layer) -> None:
@@ -106,9 +109,9 @@ if __name__ == "__main__":
     ])
 
     weight_softmax = np.array([
-        [1],
-        [1],
-        [1]
+        [-10, 17],
+        [-20, 18],
+        [30, -10]
     ])
 
     # print(input[-1:,].flatten())
@@ -131,7 +134,7 @@ if __name__ == "__main__":
 
     # Model Sigmoid-Softmax
     layer_sigmoid_3 = Layer(2, weight_sigmoid_1, 'sigmoid')
-    layer_softmax = Layer(1, weight_softmax, 'softmax')
+    layer_softmax = Layer(2, weight_softmax, 'softmax')
     ffnn_sigmax = FFNN([layer_sigmoid_3, layer_softmax], input)
 
     # Contoh get_structure untuk Layer
