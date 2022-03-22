@@ -2,3 +2,5 @@ backup
 temp*
 *.zip
 .ipynb_checkpoints
+test
+other
