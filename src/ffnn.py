@@ -5,7 +5,7 @@ import numpy as np
 ## Linear
 linear = lambda x: x
 linear = np.vectorize(linear)
-## Sigmoid (add threshold?)
+## Sigmoid
 sigmoid = lambda x: 1 / (1 + math.exp(-x))
 sigmoid = np.vectorize(sigmoid)
 ## ReLU
@@ -21,16 +21,76 @@ activation_functions = {
     'softmax': softmax
 }
 
+# Loss functions
+## Linear, Sigmoid, ReLU
+def general_loss(predict: np.array or int, target: list or int):
+    if (isinstance(predict, type(int))): return 0.5 * ((target - predict) ** 2)
+    sum = 0
+    for i in range(len(target)):
+        sum += ((target[i] - predict[i]) ** 2)
+    return 0.5 * sum
+## Softmax
+def softmax_loss(predict: np.array, target: int):
+    return -math.log(predict[target]) # base e
+## Dict
+loss_functions = {
+    'linear': general_loss,
+    'sigmoid': general_loss,
+    'relu': general_loss,
+    'softmax': softmax_loss
+}
+
+# Back-propagation functions (derivatives)
+## Linear
+linear_backprop = lambda x: 1
+## Sigmoid
+# sigmoid_backprop = lambda x: sigmoid(x) * (1 - sigmoid(x)) # or x * (1 - x)?
+sigmoid_backprop = lambda x: x * (1 - x)
+## ReLU
+relu_backprop = lambda x: int(x >= 0)
+relu_backprop = np.vectorize(relu_backprop)
+## Softmax
+def softmax_backprop(arr, targ):
+    arr_copy = np.copy(arr)
+    arr_copy[targ] = -(1 - arr_copy[targ])
+    return arr_copy
+## Dict
+backprop_functions = {
+    'linear': linear_backprop,
+    'sigmoid': sigmoid_backprop,
+    'relu': relu_backprop,
+    'softmax': softmax_backprop
+}
+
 class Layer:
     # n_neuron: number of neuron, weights: weight matrix, activation: activation function
     def __init__(self, n_neuron: int, weights: np.array, activation: str) -> None:
         self.n_neuron = n_neuron # visualization purposes
-        self.weights = weights
-        self.activation = activation
-        self.act_function = activation_functions[activation]
+        self.weights = weights # weights (including bias)
+        self.activation = activation # activation type [linear, sigmoid, relu, softmax]
+        self.act_function = activation_functions[activation] # activation function used
+        self.loss_function = loss_functions[activation] # loss function used
+        self.backprop_functions = backprop_functions[activation] # derivative activation functions
+        self.result = [] # retain result of feed forward iteration
+        self.deltas = np.zeros_like(self.weights) # initialize delta for backprop
+        # every feed forward add result, every backprop add to delta
 
     def calculate(self, in_matrix: np.array) -> np.array:
-        return self.act_function(np.dot(self.weights.transpose(), in_matrix))
+        self.result = self.act_function(np.dot(self.weights.transpose(), in_matrix))
+        return self.result # [a0, a1, a2, ..., an]
+
+    def calculate_loss(self, prediction: (np.array or int), target: (list or int)) -> float: # used for calculating loss for output layer
+        if (self.activation == "softmax"): return self.loss_function(prediction, np.argmax(target))
+        return self.loss_function(prediction, target)
+    
+    def update_weight(self):
+        self.weights += self.deltas # adding deltas to weights
+        self.deltas = np.zeros_like(self.deltas) # resettings deltas for next mini-batch
+        return self.weights # for verbose purpose
+    
+    def add_deltas(self, delta_matrix: np.array) -> None:
+        self.deltas += delta_matrix
+        return self.deltas # for verbose purpose
     
     def get_structure(self) -> tuple((int, np.array, np.array)):
         # n_neuron: int, weight matrix: np.array, bias weight matrix: np.array
@@ -40,11 +100,28 @@ class Layer:
         return (n_neuron, weight_neuron, weight_bias)
 
 class FFNN:
-    def __init__(self,  hidden_layers: list, input_layer = None, threshold = 0.5) -> None:
+    def __init__(self,  
+            hidden_layers: list,
+            input_layer = None,
+            threshold = 0.5,
+            learning_rate = 0.1,
+            err_threshold = 0.001,
+            max_iter = 1000,
+            batch_size = 1) -> None:
         self.hidden_layers = hidden_layers
         self.output_layer = hidden_layers[-1]
+        self.output_activation = self.output_layer.activation
         self.input_layer = input_layer
         self.threshold = threshold
+        self.learning_rate = learning_rate
+        self.err_threshold = err_threshold
+        self.max_iter = max_iter
+        self.batch_size = batch_size # default incremental SGD
+    
+    @staticmethod
+    def gen_model(n_neurons: list, activations: list):
+        if (len(n_neurons) != len(activations)): return None
+        return
 
     def feed_forward(self) -> (np.array or None):
         if (isinstance(self.input_layer, type(None))): return None
@@ -59,11 +136,84 @@ class FFNN:
         output = input
         for i in range(0, len(self.hidden_layers)):
             output = self.hidden_layers[i].calculate(np.append(output, 1))
-        if (self.output_layer.activation == 'softmax'): return output
-        return int(output > self.threshold)
+        if (self.output_layer.activation == 'softmax'): return output # usually used for multiclass
+        if (self.output_layer.n_neuron > 1): return np.where(output > self.threshold, 1, 0) # multiclass non-softmax
+        return int(output > self.threshold) # binary
+    
+    def fit(self, x_train, y_train, randomize = False) -> None: # make fit verbose?
+        self.input_layer = x_train
+        for epoch in range(self.max_iter):
+            training_data = x_train
+            training_target = y_train
+            if randomize:
+                pass # randomize dataset x_train here
+            
+            # randomize dataset, for in range dataset do forward then backprop
+            # if i + 1 % batch_size == 0 update_weight
+            error_sum = 0 # initialize error (for comparing with err_threshold)
+            for iter in range(len(y_train)):
+                pred = self.predict(training_data[iter]) # results already encoded
+                pred = self.output_layer.result # result before encoded
+                error = self.output_layer.calculate_loss(pred, training_target[iter])
+                self.backpropagate(training_data[iter], training_target[iter])
+                error_sum += error
+                if ((iter + 1) % self.batch_size == 0 or iter == len(training_target) - 1):
+                    self.update_weights() # update weights (mini-batch)
+
+            if (error_sum / len(y_train) < self.err_threshold):
+                break # stop fitting process when avg error < threshold
+        return
+    
+    def backpropagate(self, input, target): # update deltas for every layer
+        err_term = 0
+        for iter in reversed(range(0, len(self.hidden_layers))):
+            prev_layer = None if iter == 0 else self.hidden_layers[iter - 1]
+            prev_result = np.atleast_2d(np.append(input, 1)) if prev_layer == None \
+                else np.atleast_2d(np.append(prev_layer.result, 1))
+            if (iter == len(self.hidden_layers) - 1): # if output layer
+                if (self.output_activation == "softmax"): # if softmax output layer
+                    pred = self.output_layer.result
+                    err_deriv = self.output_layer.backprop_functions(pred, np.argmax(target))
+                    err_term = err_deriv
+                    gradient = np.dot(prev_result.T,
+                        np.atleast_2d(err_deriv))
+                    delta = -self.learning_rate * gradient
+                    self.output_layer.add_deltas(delta)
+                    pass
+                else: # if other output layer
+                    pred = self.output_layer.result
+                    err_deriv = -(np.array(target) - pred)
+                    err_term = err_deriv
+                    donet = self.output_layer.backprop_functions(pred)
+                    gradient = np.dot(prev_result.T,
+                        np.atleast_2d(err_deriv * donet))
+                    delta = -self.learning_rate * gradient
+                    self.output_layer.add_deltas(delta)
+            else: # if hidden layer
+                this_layer = self.hidden_layers[iter]
+                next_layer = self.hidden_layers[iter + 1]
+                err_term = np.add.reduce(next_layer.weights[:-1].T * 
+                    np.atleast_2d(err_term).T, 0) / np.shape(err_term)[0]
+                donet = this_layer.backprop_functions(this_layer.result) # no softmax in hidden layer
+                gradient = np.dot(prev_result.T,
+                    np.atleast_2d(err_term * donet)) # should be correct
+                delta = -self.learning_rate * gradient
+                self.hidden_layers[iter].add_deltas(delta)
+                pass
+        return
+        
+    def update_weights(self):
+        for layer in self.hidden_layers:
+            layer.update_weight()
+        return
+    
+    def attach_input(self, input_layer: np.array) -> None:
+        self.input_layer = input_layer
+        return
 
     def attach_hidden_layer(self, hidden_layer: Layer) -> None:
         self.hidden_layers.append(hidden_layer)
+        return
 
     def predict(self, input_layer: np.array) -> list: # input_layer without bias
         self.input_layer = input_layer
@@ -189,6 +339,7 @@ if __name__ == "__main__":
 
     # Sigmoid Model (PPT)
     weight_sigmoid_1 = np.array([
+    #    n0   n1
         [20, -20],
         [20, -20],
         [-10, 30] # weight bias
@@ -244,16 +395,69 @@ if __name__ == "__main__":
     ffnn_sigmax = FFNN([layer_sigmoid_3, layer_softmax], input)
 
     # Contoh get_structure untuk Layer
-    print(layer_sigmoid.get_structure())
+    # print(layer_sigmoid.get_structure())
 
     # Contoh get_structure untuk FFNN
-    print(ffnn_sig.get_structure())
+    # print(ffnn_sig.get_structure())
 
-    print(ffnn_sig.feed_forward())
-    print(ffnn_relu.feed_forward())
-    print(ffnn_reli.feed_forward())
-    print(ffnn_sigmax.feed_forward())
+    # print(ffnn_sig.feed_forward())
+    # print(ffnn_relu.feed_forward())
+    # print(ffnn_reli.feed_forward())
+    # print(ffnn_sigmax.feed_forward())
 
-    print(ffnn_reli.predict(np.array([0, 1])))
+    # print(ffnn_reli.predict(np.array([0, 1])))
 
-    print(softmax(np.dot(np.array([[0.75, 0.25, 0.11, 7], [0.75, 0.25, 0.11, 8]]), np.array([1, 1, 1, 1]).transpose())))
+    weight_input = np.array([
+        [0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0, 0.0]
+    ])
+    weight_input = np.random.uniform(low=-1.0, high=1.0, size=(5, 4))
+
+    weight_output = np.array([
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0]
+    ])
+    # weight_output = np.random.rand(5, 3)
+    weight_output = np.random.uniform(low=-1.0, high=1.0, size=(5, 3))
+
+    x_train = np.array([
+        [5.1, 3.5, 1.4, .2],
+        [4.9, 3.0, 1.4, .2],
+        [4.7, 3.2, 1.3, .2],
+        [7.0, 3.2, 4.7, 1.4],
+        [6.4, 3.2, 4.5, 1.5],
+        [6.9, 3.1, 4.9, 1.5],
+        [5.8, 2.7, 5.1, 1.9],
+        [7.1, 3.0, 5.9, 2.1],
+        [6.3, 2.9, 5.6, 1.8]
+    ])
+
+    y_train = np.array([
+        [1, 0, 0],
+        [1, 0, 0],
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 1, 0],
+        [0, 1, 0],
+        [0, 0, 1],
+        [0, 0, 1],
+        [0, 0, 1]
+    ])
+
+    layer_testfit_1 = Layer(4, weight_input, 'sigmoid')
+    layer_testfit_2 = Layer(3, weight_output, 'softmax')
+    ffnn_testfit = FFNN([layer_testfit_1, layer_testfit_2], batch_size = 2)
+    print(ffnn_testfit.hidden_layers[0].weights)
+    print("THIS IS TESTING")
+    ffnn_testfit.fit(x_train, y_train)
+    print("FITTING ENDS HERE")
+    print(ffnn_testfit.hidden_layers[0].weights)
+    for data in x_train:
+        print(ffnn_testfit.predict(data))
+    # print(softmax(np.dot(np.array([[0.75, 0.25, 0.11, 7], [0.75, 0.25, 0.11, 8]]), np.array([1, 1, 1, 1]).transpose())))
