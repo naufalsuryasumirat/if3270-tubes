@@ -9,7 +9,7 @@ linear = np.vectorize(linear)
 sigmoid = lambda x: 1 / (1 + math.exp(-x))
 sigmoid = np.vectorize(sigmoid)
 ## ReLU
-relu = lambda x: max(0, x)
+relu = lambda x: float(max(0, x))
 relu = np.vectorize(relu)
 ## Softmax
 softmax = lambda x: np.exp(x) / np.exp(x).sum(axis=0) # already used for vectors
@@ -47,7 +47,7 @@ linear_backprop = lambda x: 1
 # sigmoid_backprop = lambda x: sigmoid(x) * (1 - sigmoid(x)) # or x * (1 - x)?
 sigmoid_backprop = lambda x: x * (1 - x)
 ## ReLU
-relu_backprop = lambda x: int(x >= 0)
+relu_backprop = lambda x: float(x >= 0)
 relu_backprop = np.vectorize(relu_backprop)
 ## Softmax
 def softmax_backprop(arr, targ):
@@ -104,9 +104,9 @@ class FFNN:
             hidden_layers: list,
             input_layer = None,
             threshold = 0.5,
-            learning_rate = 0.1,
+            learning_rate = 0.01,
             err_threshold = 0.001,
-            max_iter = 1000,
+            max_iter = 5000,
             batch_size = 1) -> None:
         self.hidden_layers = hidden_layers
         self.output_layer = hidden_layers[-1]
@@ -119,9 +119,21 @@ class FFNN:
         self.batch_size = batch_size # default incremental SGD
     
     @staticmethod
-    def gen_model(n_neurons: list, activations: list):
+    def generate_model(input_size: int, n_neurons: list, activations: list):
         if (len(n_neurons) != len(activations)): return None
-        return
+        arr = []
+        for i in range(len(n_neurons)):
+            if (i == 0): arr.append(Layer(
+                n_neurons[i], np.random.uniform(low = -1.0, high = 1.0, 
+                    size = (input_size + 1, n_neurons[i])),
+                    activations[i])
+                )
+            else: arr.append(Layer(
+                n_neurons[i], np.random.uniform(low = -1.0, high = 1.0,
+                    size = (n_neurons[i - 1] + 1, n_neurons[i])),
+                    activations[i])
+                )
+        return FFNN(arr)
 
     def feed_forward(self) -> (np.array or None):
         if (isinstance(self.input_layer, type(None))): return None
@@ -140,14 +152,18 @@ class FFNN:
         if (self.output_layer.n_neuron > 1): return np.where(output > self.threshold, 1, 0) # multiclass non-softmax
         return int(output > self.threshold) # binary
     
-    def fit(self, x_train, y_train, randomize = False) -> None: # make fit verbose?
-        self.input_layer = x_train
+    def fit(self, x_train, y_train, randomize = False, learning_rate = None, 
+            batch_size = None, max_iter = None, 
+            err_threshold = None, update_every = 250) -> None:
+        if learning_rate is not None: self.learning_rate = learning_rate
+        if batch_size is not None: self.batch_size = batch_size
+        if max_iter is not None: self.max_iter = max_iter
+        if err_threshold is not None: self.err_threshold = err_threshold
         for epoch in range(self.max_iter):
             training_data = x_train
             training_target = y_train
             if randomize:
                 pass # randomize dataset x_train here
-            
             # randomize dataset, for in range dataset do forward then backprop
             # if i + 1 % batch_size == 0 update_weight
             error_sum = 0 # initialize error (for comparing with err_threshold)
@@ -159,9 +175,13 @@ class FFNN:
                 error_sum += error
                 if ((iter + 1) % self.batch_size == 0 or iter == len(training_target) - 1):
                     self.update_weights() # update weights (mini-batch)
+            err_avg = error_sum / len(y_train)
 
-            if (error_sum / len(y_train) < self.err_threshold):
+            if (err_avg < self.err_threshold):
                 break # stop fitting process when avg error < threshold
+
+            if (epoch % update_every == 0):
+                print("Epoch %d, Loss: %.6f" % (1 if epoch == 0 else epoch, err_avg))
         return
     
     def backpropagate(self, input, target): # update deltas for every layer
@@ -329,103 +349,6 @@ def calculate_accuracy(model: FFNN, input_set, validation_set: list, is_softmax 
     return num_correct / len(validation_set) * 100
 
 if __name__ == "__main__":
-    # XOR Dataset
-    input = np.array([
-        [1, 1],
-        [1, 0],
-        [0, 0],
-        [0, 1] 
-    ])
-
-    # Sigmoid Model (PPT)
-    weight_sigmoid_1 = np.array([
-    #    n0   n1
-        [20, -20],
-        [20, -20],
-        [-10, 30] # weight bias
-    ])
-
-    weight_sigmoid_2 = np.array([
-        [20],
-        [20],
-        [-30] # weight bias
-    ])  # n_column (banyak kolom): banyak neuron + 1 bias,
-        # n_row (banyak baris): banyak neuron sebelumnya + 1 bias
-
-    # Relu Model (PPT)
-    weight_relu_1 = np.array([
-        [1, 1],
-        [1, 1],
-        [0, -1] # weight bias
-    ])
-
-    weight_relu_2 = np.array([ # Linear too
-        [1],
-        [-2],
-        [0] # weight bias
-    ])
-
-    weight_softmax = np.array([
-        [-10, 17],
-        [-20, 18],
-        [30, -10]
-    ])
-
-    # print(input[-1:,].flatten())
-    # print(input[:-1,])
-
-    # Input FFN
-    layer_sigmoid = Layer(2, weight_sigmoid_1, 'sigmoid')
-    layer_sigmoid_2 = Layer(1, weight_sigmoid_2, 'sigmoid')
-    ffnn_sig = FFNN([layer_sigmoid, layer_sigmoid_2], input)
-
-    # Model Relu
-    layer_relu_2 = Layer(2, weight_relu_1, 'relu')
-    layer_relu_3 = Layer(1, weight_relu_2, 'relu')
-    ffnn_relu = FFNN([layer_relu_2, layer_relu_3], input)
-
-    # Model Relu-Linear
-    layer_relu_4 = Layer(2, weight_relu_1, 'relu')
-    layer_linear = Layer(1, weight_relu_2, 'linear')
-    ffnn_reli = FFNN([layer_relu_4, layer_linear], input)
-
-    # Model Sigmoid-Softmax
-    layer_sigmoid_3 = Layer(2, weight_sigmoid_1, 'sigmoid')
-    layer_softmax = Layer(2, weight_softmax, 'softmax')
-    ffnn_sigmax = FFNN([layer_sigmoid_3, layer_softmax], input)
-
-    # Contoh get_structure untuk Layer
-    # print(layer_sigmoid.get_structure())
-
-    # Contoh get_structure untuk FFNN
-    # print(ffnn_sig.get_structure())
-
-    # print(ffnn_sig.feed_forward())
-    # print(ffnn_relu.feed_forward())
-    # print(ffnn_reli.feed_forward())
-    # print(ffnn_sigmax.feed_forward())
-
-    # print(ffnn_reli.predict(np.array([0, 1])))
-
-    weight_input = np.array([
-        [0.0, 0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0, 0.0]
-    ])
-    weight_input = np.random.uniform(low=-1.0, high=1.0, size=(5, 4))
-
-    weight_output = np.array([
-        [0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0],
-        [0.0, 0.0, 0.0]
-    ])
-    # weight_output = np.random.rand(5, 3)
-    weight_output = np.random.uniform(low=-1.0, high=1.0, size=(5, 3))
-
     x_train = np.array([
         [5.1, 3.5, 1.4, .2],
         [4.9, 3.0, 1.4, .2],
@@ -450,14 +373,38 @@ if __name__ == "__main__":
         [0, 0, 1]
     ])
 
+    weight_input = np.random.uniform(low = -1.0, high = 1.0, size = (5, 4))
+    weight_intermediate_1 = np.random.uniform(low = -1.0, high = 1.0, size = (5, 3))
+    weight_intermediate_2 = np.random.uniform(low = -1.0, high = 1.0, size = (4, 4))
+    weight_output = np.random.uniform(low = -1.0, high = 1.0, size = (5, 3))
+    weight_output2 = np.random.uniform(low = -1.0, high = 1.0, size = (4, 3))
+
     layer_testfit_1 = Layer(4, weight_input, 'sigmoid')
-    layer_testfit_2 = Layer(3, weight_output, 'softmax')
-    ffnn_testfit = FFNN([layer_testfit_1, layer_testfit_2], batch_size = 2)
-    print(ffnn_testfit.hidden_layers[0].weights)
+    layer_testfit_2 = Layer(3, weight_intermediate_1, 'relu')
+    layer_testfit_3 = Layer(5, weight_intermediate_2, 'linear')
+    layer_testfit_4 = Layer(3, weight_output, 'softmax')
+    ffnn_testfit = FFNN([layer_testfit_1, layer_testfit_2, layer_testfit_3, layer_testfit_4], batch_size = 2)
+    ffnn_testfit = FFNN.generate_model(
+        4, [4, 3, 5, 3], ['sigmoid', 'relu', 'linear', 'softmax']
+    )
+
+    print(ffnn_testfit.hidden_layers[1].weights)
     print("THIS IS TESTING")
-    ffnn_testfit.fit(x_train, y_train)
+    # ffnn_testfit.fit(x_train, y_train)
     print("FITTING ENDS HERE")
-    print(ffnn_testfit.hidden_layers[0].weights)
+    print(ffnn_testfit.hidden_layers[1].weights)
+
+
     for data in x_train:
         print(ffnn_testfit.predict(data))
+    
+    layer_testfit2_1 = Layer(4, weight_input, 'sigmoid')
+    layer_testfit2_2 = Layer(3, weight_intermediate_1, 'relu')
+    layer_testfit2_3 = Layer(3, weight_output2, 'sigmoid')
+    ffnn_testfit2 = FFNN([layer_testfit2_1, layer_testfit2_2, layer_testfit2_3])
+    ffnn_testfit2.fit(x_train, y_train, batch_size=2)
+
+    for data in x_train:
+        print(ffnn_testfit2.predict(data))
+
     # print(softmax(np.dot(np.array([[0.75, 0.25, 0.11, 7], [0.75, 0.25, 0.11, 8]]), np.array([1, 1, 1, 1]).transpose())))
