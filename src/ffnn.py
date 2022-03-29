@@ -62,6 +62,76 @@ backprop_functions = {
     'softmax': softmax_backprop
 }
 
+class ConfusionMatrix:
+    def __init__(self, pred, val): # input has to be 2d array [numpy]
+        if (len(pred) != len(val)): raise ValueError('pred and val length is not the same!')
+        if (len(pred[0]) != len(val[0])): raise ValueError('number of class mismatch!')
+        self.pred = pred
+        self.val = val
+        self.count = len(val)
+        self.num_classes = len(val[0])
+        # self.num_per_class = None # need??
+        # col: predicted values, row: actual values
+        self.matrix = self.generate_matrix(pred, val)
+
+        self.true_positives = np.diag(self.matrix, k = 0)
+        self.false_positives = self.calculate_false_positives()
+        self.false_negatives = self.calculate_false_negatives()
+        self.true_negatives = self.calculate_true_negatives() # not used?
+
+        # self.accuracies #??
+        self.precisions = self.calculate_precisions()
+        self.recalls = self.calculate_recalls()
+        self.f1_scores = self.calculate_f1_scores()
+
+        self.accuracy = np.sum(self.true_positives) / self.count
+        self.precision = np.average(self.precisions)
+        self.recall = np.average(self.recalls)
+        self.f1_score = np.average(self.f1_scores)
+
+    def generate_matrix(self, pred, val):
+        if (len(pred) != len(val)): return None
+        matrix = np.zeros(shape=(len(val[0]), len(val[0])))
+        for i in range(len(val)):
+            matrix[np.argmax(val[i])][np.argmax(pred[i])] += 1
+        return matrix
+    
+    def calculate_false_positives(self):
+        arr = []
+        for i in range(self.num_classes):
+            col = self.matrix[:,i]
+            arr.append(np.sum(col) - col[i])
+        return np.array(arr)
+
+    def calculate_false_negatives(self):
+        arr = []
+        for i in range(self.num_classes):
+            row = self.matrix[i,:]
+            arr.append(np.sum(row) - row[i])
+        return np.array(arr)
+
+    def calculate_true_negatives(self):
+        arr = []
+        for i in range(self.num_classes):
+            mat = np.delete(np.delete(self.matrix, i, axis = 1), i, axis = 0)
+            arr.append(np.sum(mat))
+        return np.array(arr)
+    
+    # def calculate_accuracies(self):
+    #     pass
+
+    def calculate_precisions(self):
+        # true positive / (true positive + false positive)
+        return self.true_positives / (self.true_positives + self.false_positives)
+
+    def calculate_recalls(self):
+        # true positive / (true positive + false negative)
+        return self.true_positives / (self.true_positives + self.false_negatives)
+
+    def calculate_f1_scores(self):
+        # 2 * (precision * recall) / (precision + recall)
+        return 2 * (self.precisions * self.recalls) / (self.precisions + self.recalls)
+
 class Layer:
     # n_neuron: number of neuron, weights: weight matrix, activation: activation function
     def __init__(self, n_neuron: int, weights: np.array, activation: str) -> None:
@@ -238,6 +308,12 @@ class FFNN:
     def predict(self, input_layer: np.array) -> list: # input_layer without bias
         self.input_layer = input_layer
         return self.feed_forward()
+    
+    def predict_confusion(self, input_layer: np.array, validation_set: np.array) -> ConfusionMatrix:
+        if len(input_layer) <= 1: return None, None # if not batch prediction
+        self.input_layer = input_layer
+        prediction = self.feed_forward()
+        return ConfusionMatrix(prediction, validation_set) # can get prediction from confusion matrix
 
     def get_structure(self) -> tuple((np.array, list)):
         return (self.input_layer, [layer.get_structure() for layer in self.hidden_layers])
