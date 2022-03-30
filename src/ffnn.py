@@ -68,32 +68,36 @@ class ConfusionMatrix:
         if (len(pred[0]) != len(val[0])): raise ValueError('number of class mismatch!')
         self.pred = pred
         self.val = val
-        self.count = len(val)
-        self.num_classes = len(val[0])
-        # self.num_per_class = None # need??
-        # col: predicted values, row: actual values
+        self.count = len(val) # all data count
+        self.num_classes = len(val[0]) # number of classes
+        self.num_per_class = [0] * self.num_classes # data count per class
+
+        # col: predicted values, row: actual values [Confusion Matrix]
         self.matrix = self.generate_matrix(pred, val)
 
-        self.true_positives = np.diag(self.matrix, k = 0)
-        self.false_positives = self.calculate_false_positives()
-        self.false_negatives = self.calculate_false_negatives()
-        self.true_negatives = self.calculate_true_negatives() # not used?
+        self.true_positives = np.diag(self.matrix, k = 0) # True positives per class
+        self.false_positives = self.calculate_false_positives() # False positives per class
+        self.false_negatives = self.calculate_false_negatives() # False negatives per class
+        self.true_negatives = self.calculate_true_negatives() # True negatives per class
 
-        # self.accuracies #??
-        self.precisions = self.calculate_precisions()
-        self.recalls = self.calculate_recalls()
-        self.f1_scores = self.calculate_f1_scores()
+        # Statistics per class
+        self.accuracies = self.true_positives / self.num_per_class # Accuracy per class
+        self.precisions = self.calculate_precisions() # Precision per class
+        self.recalls = self.calculate_recalls() # Recall per class
+        self.f1_scores = self.calculate_f1_scores() # F1_Score per class
 
-        self.accuracy = np.sum(self.true_positives) / self.count
-        self.precision = np.average(self.precisions)
-        self.recall = np.average(self.recalls)
-        self.f1_score = np.average(self.f1_scores)
+        # Statistics for all
+        self.accuracy = np.sum(self.true_positives) / self.count # Accuracy for all
+        self.precision = np.average(self.precisions) # Precision for all
+        self.recall = np.average(self.recalls) # Recall for all
+        self.f1_score = np.average(self.f1_scores) # F1_Score for all
 
     def generate_matrix(self, pred, val):
         if (len(pred) != len(val)): return None
         matrix = np.zeros(shape=(len(val[0]), len(val[0])))
         for i in range(len(val)):
             matrix[np.argmax(val[i])][np.argmax(pred[i])] += 1
+            self.num_per_class[np.argmax(val[i])] += 1
         return matrix
     
     def calculate_false_positives(self):
@@ -116,9 +120,6 @@ class ConfusionMatrix:
             mat = np.delete(np.delete(self.matrix, i, axis = 1), i, axis = 0)
             arr.append(np.sum(mat))
         return np.array(arr)
-    
-    # def calculate_accuracies(self):
-    #     pass
 
     def calculate_precisions(self):
         # true positive / (true positive + false positive)
